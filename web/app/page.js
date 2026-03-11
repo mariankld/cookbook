@@ -20,8 +20,8 @@ export default async function HomePage({ searchParams }) {
   return (
     <main className="container">
       <header className="hero">
-        <h1>Family Recipes</h1>
-        <p>Simple, searchable, and beautifully organized.</p>
+        <h1>Neklyudov Family Recipes</h1>
+        <p>Simple, searchable, and organized.</p>
       </header>
 
       <form className="filters" action="/" method="get">
@@ -80,7 +80,7 @@ export default async function HomePage({ searchParams }) {
               </div>
               <div className="card-content">
                 <h2>{recipe.title}</h2>
-                <p>{recipe.story || "No story provided yet."}</p>
+                {recipe.story ? <p>{recipe.story}</p> : null}
                 <div className="meta">
                   <span>{recipe.author}</span>
                   <span>{recipe.cookingTime ? `${recipe.cookingTime} min` : "Time n/a"}</span>
