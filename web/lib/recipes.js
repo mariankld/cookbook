@@ -27,10 +27,18 @@ function flattenTags(tags) {
 
 export function mapRecipe(row) {
   const tags = row.tags || {};
+  const cuisineTags = normalizeTagList(tags.cuisine);
+  const mealTypeTags = normalizeTagList(tags.meal_type);
+  const dessertInCuisine = cuisineTags.includes("dessert");
   const tagGroups = {
-    cuisine: normalizeTagList(tags.cuisine),
+    cuisine: cuisineTags.filter((tag) => tag !== "dessert"),
     dietary: normalizeTagList(tags.dietary),
-    occasion: normalizeTagList(tags.meal_type)
+    occasion: Array.from(
+      new Set([
+        ...mealTypeTags,
+        ...(dessertInCuisine ? ["dessert"] : [])
+      ])
+    )
   };
 
   return {
