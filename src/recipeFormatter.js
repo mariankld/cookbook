@@ -28,7 +28,7 @@ Your tasks:
 2) Normalize structure and wording while preserving intent.
 3) Infer missing but obvious details only when safe, otherwise keep concise.
 4) Infer likely "implicit" ingredients when appropriate from recipe + photo context (for example oil used for frying), and keep them separate from explicitly provided ingredients.
-5) Estimate total calories for the whole recipe, then estimate calories per serving.
+5) Estimate calories per serving.
 6) Create practical tags for filtering, including dietary tags inferred from ingredients and cooking method.
 7) Return strict JSON only.
 
@@ -42,10 +42,8 @@ Output JSON schema:
   "time_minutes": number,
   "servings": "string",
   "nutrition": {
-    "estimated_calories_total": number,
     "estimated_calories_per_serving": number,
-    "calorie_estimation_confidence": "low|medium|high",
-    "calorie_estimation_notes": "string"
+    "calorie_estimation_confidence": "low|medium|high"
   },
   "tags": {
     "cuisine": ["..."],
@@ -133,12 +131,8 @@ export function renderRecipeForTelegram(recipe) {
     "",
     `*Time:* ${recipe.time_minutes || 0} min`,
     `*Servings:* ${recipe.servings || "-"}`,
-    `*Estimated calories (total):* ${nutrition.estimated_calories_total || 0} kcal`,
     `*Estimated calories (per serving):* ${nutrition.estimated_calories_per_serving || 0} kcal`,
     `*Calories confidence:* ${nutrition.calorie_estimation_confidence || "-"}`,
-    nutrition.calorie_estimation_notes
-      ? `*Calories notes:* ${nutrition.calorie_estimation_notes}`
-      : "",
     `*Tags:* ${(flatTags.length ? flatTags.join(", ") : "-").replaceAll("_", " ")}`
   ]
     .filter(Boolean)
