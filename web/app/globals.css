@@ -215,11 +215,35 @@ a {
   margin: 0 0 10px;
 }
 
+.recipe-extra h2 {
+  margin: 0 0 10px;
+}
+
 .detail-grid ul,
 .detail-grid ol {
   margin: 0;
   padding-left: 20px;
   line-height: 1.6;
+}
+
+.recipe-extra {
+  margin-top: 20px;
+  color: rgba(0, 0, 0, 1);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.recipe-extra p {
+  margin: 0 0 6px;
+}
+
+.recipe-extra .extra-notes {
+  margin-top: 10px;
+}
+
+.recipe-extra .extra-tags {
+  margin-top: 8px;
+  color: rgba(120, 120, 120, 1);
 }
 
 .comments-section {

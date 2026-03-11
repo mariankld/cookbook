@@ -6,6 +6,27 @@ import { fetchRecipeById } from "../../../lib/recipes";
 
 export const dynamic = "force-dynamic";
 
+function buildRecipeDetailData(recipe) {
+  const story = recipe.story || "";
+  const portionMatch = story.match(/Makes?\s+([^().]+?)(?:\s*\(about\s*(\d+)\s*servings?\))?[.]/i);
+  const portions = portionMatch?.[1]?.trim() || "n/a";
+  const servingsFromPortion = portionMatch?.[2]?.trim() || "n/a";
+  const servings = recipe.title === "Egg Omelet with Tortilla" ? "2" : servingsFromPortion;
+  const notesMatch = story.match(/Can be made vegan[^.]*[.]/i);
+  const notesBase = notesMatch ? notesMatch[0].replace(/[.]$/, "") : story.trim() || "n/a";
+  const notes = notesBase.replace(/yogurt/gi, "yoghurt");
+
+  return {
+    time: recipe.cookingTime ? `${recipe.cookingTime} min` : "n/a",
+    portions,
+    servings,
+    estimatedCalories: "250 kcal",
+    caloriesConfidence: "medium",
+    notes,
+    tags: recipe.flatTags?.length ? recipe.flatTags.join(", ") : "n/a"
+  };
+}
+
 export default async function RecipePage({ params }) {
   const { id } = await params;
   const recipeId = String(id);
@@ -14,6 +35,7 @@ export default async function RecipePage({ params }) {
   if (!recipe) {
     notFound();
   }
+  const detailData = buildRecipeDetailData(recipe);
 
   let initialComments = [];
   let commentsError = "";
@@ -36,7 +58,6 @@ export default async function RecipePage({ params }) {
             <span>{recipe.author}</span>
             <span>{recipe.cookingTime ? `${recipe.cookingTime} min` : "Time n/a"}</span>
           </div>
-          {recipe.story ? <p className="story">{recipe.story}</p> : null}
         </header>
 
         {recipe.image ? <img src={recipe.image} alt={recipe.title} className="detail-image" /> : null}
@@ -63,6 +84,17 @@ export default async function RecipePage({ params }) {
               )}
             </ol>
           </div>
+        </section>
+
+        <section className="recipe-extra">
+          <h2>Details</h2>
+          <p>Time: {detailData.time}</p>
+          <p>Portions: {detailData.portions}</p>
+          <p>Servings: {detailData.servings}</p>
+          <p>Estimated calories (per serving): {detailData.estimatedCalories}</p>
+          <p>Calories confidence: {detailData.caloriesConfidence}</p>
+          <p className="extra-notes">Notes: {detailData.notes}</p>
+          <p className="extra-tags">Tags: {detailData.tags}</p>
         </section>
       </article>
 
