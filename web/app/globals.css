@@ -148,6 +148,10 @@ a {
   font-size: 1.05rem;
 }
 
+.card-content .meta {
+  margin-top: 8px;
+}
+
 .card-content p {
   margin: 8px 0 10px;
   color: var(--muted);

@@ -80,7 +80,6 @@ export default async function HomePage({ searchParams }) {
               </div>
               <div className="card-content">
                 <h2>{recipe.title}</h2>
-                {recipe.story ? <p>{recipe.story}</p> : null}
                 <div className="meta">
                   <span>{recipe.author}</span>
                   <span>{recipe.cookingTime ? `${recipe.cookingTime} min` : "Time n/a"}</span>
