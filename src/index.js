@@ -105,10 +105,27 @@ function shouldSendGreetingIntro(ctx) {
   return hasBotMention(ctx);
 }
 
+function extractServingsCount(text = "") {
+  const match = text.match(/\d+(?:[.,]\d+)?/);
+  if (!match) return null;
+  const numeric = Number(match[0].replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.round(numeric);
+}
+
+function buildRecipeInputWithServings(recipeInput, servingsCount) {
+  return [
+    recipeInput,
+    "",
+    `Confirmed servings from user: ${servingsCount}`
+  ].join("\n");
+}
+
 async function generateAndPreviewRecipe(ctx, userState, userText) {
   const recipe = await formatRecipeWithTags(userText, "auto", userState.photoUrl || "");
   userState.formattedRecipe = recipe;
   userState.rawInput = userText;
+  userState.pendingRecipeInput = "";
   userState.stage = "awaiting_approval";
   pendingByUser.set(userState.userId, userState);
 
@@ -159,7 +176,8 @@ bot.on("photo", async (ctx) => {
     photoFileId: largest.file_id,
     photoUrl: uploadedPhotoUrl,
     formattedRecipe: null,
-    rawInput: ""
+    rawInput: "",
+    pendingRecipeInput: ""
   });
 
   await ctx.reply(
@@ -171,7 +189,10 @@ bot.on("voice", async (ctx) => {
   const userId = getUserKey(ctx);
   const userState = pendingByUser.get(userId);
 
-  if (!userState || !["awaiting_recipe_input", "awaiting_corrections"].includes(userState.stage)) {
+  if (
+    !userState ||
+    !["awaiting_recipe_input", "awaiting_corrections", "awaiting_servings"].includes(userState.stage)
+  ) {
     await ctx.reply("Please send a dish photo first.");
     return;
   }
@@ -189,6 +210,29 @@ bot.on("voice", async (ctx) => {
 
     if (!transcript) {
       await ctx.reply("Transcription was empty. Please send text or try voice again.");
+      return;
+    }
+
+    if (userState.stage === "awaiting_recipe_input") {
+      userState.pendingRecipeInput = transcript;
+      userState.stage = "awaiting_servings";
+      pendingByUser.set(userId, userState);
+      await ctx.reply('How many servings did this recipe produce? Please respond with a number ex "2"');
+      return;
+    }
+
+    if (userState.stage === "awaiting_servings") {
+      const servingsCount = extractServingsCount(transcript);
+      if (!servingsCount) {
+        await ctx.reply('I could not find a servings number. Please respond with a number ex "2".');
+        return;
+      }
+      await ctx.reply("Great, formatting and tagging your recipe...");
+      const textForModel = buildRecipeInputWithServings(
+        userState.pendingRecipeInput || "",
+        servingsCount
+      );
+      await generateAndPreviewRecipe(ctx, userState, textForModel);
       return;
     }
 
@@ -233,16 +277,43 @@ bot.on("text", async (ctx) => {
     return;
   }
 
-  if (!userState || !["awaiting_recipe_input", "awaiting_corrections"].includes(userState.stage)) {
+  if (!userState) {
     return;
   }
 
-  await ctx.reply("Formatting and tagging your recipe...");
-
   try {
     const text = ctx.message.text || "";
+
+    if (userState.stage === "awaiting_recipe_input") {
+      userState.pendingRecipeInput = text;
+      userState.stage = "awaiting_servings";
+      pendingByUser.set(userId, userState);
+      await ctx.reply('How many servings did this recipe produce? Please respond with a number ex "2"');
+      return;
+    }
+
+    if (userState.stage === "awaiting_servings") {
+      const servingsCount = extractServingsCount(text);
+      if (!servingsCount) {
+        await ctx.reply('I could not find a servings number. Please respond with a number ex "2".');
+        return;
+      }
+      await ctx.reply("Formatting and tagging your recipe...");
+      const textForModel = buildRecipeInputWithServings(
+        userState.pendingRecipeInput || "",
+        servingsCount
+      );
+      await generateAndPreviewRecipe(ctx, userState, textForModel);
+      return;
+    }
+
+    if (userState.stage !== "awaiting_corrections") {
+      return;
+    }
+
+    await ctx.reply("Formatting and tagging your recipe...");
     let textForModel = text;
-    if (userState.stage === "awaiting_corrections" && userState.formattedRecipe) {
+    if (userState.formattedRecipe) {
       textForModel = [
         "Current recipe JSON draft:",
         JSON.stringify(userState.formattedRecipe),
