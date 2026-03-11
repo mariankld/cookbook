@@ -106,7 +106,7 @@ function shouldSendGreetingIntro(ctx) {
 }
 
 async function generateAndPreviewRecipe(ctx, userState, userText) {
-  const recipe = await formatRecipeWithTags(userText, "auto");
+  const recipe = await formatRecipeWithTags(userText, "auto", userState.photoUrl || "");
   userState.formattedRecipe = recipe;
   userState.rawInput = userText;
   userState.stage = "awaiting_approval";
