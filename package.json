@@ -9,6 +9,7 @@
     "check": "node --check src/index.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.99.0",
     "dotenv": "^16.4.5",
     "googleapis": "^140.0.1",
     "openai": "^4.56.0",

@@ -6,9 +6,9 @@ import {
   renderRecipeForTelegram,
   transcribeAudio
 } from "./recipeFormatter.js";
-import { saveRecipeToGoogleSheet } from "./sheets.js";
+import { saveRecipeToSupabase, uploadRecipeImage } from "./supabase.js";
 
-const requiredEnv = ["TELEGRAM_BOT_TOKEN", "OPENAI_API_KEY"];
+const requiredEnv = ["TELEGRAM_BOT_TOKEN", "OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     throw new Error(`Missing required env var: ${key}`);
@@ -39,9 +39,12 @@ async function downloadTelegramFileBuffer(ctx, fileId) {
   return Buffer.from(arrayBuffer);
 }
 
-async function getTelegramFileUrl(ctx, fileId) {
-  const link = await ctx.telegram.getFileLink(fileId);
-  return link.href;
+async function getTelegramFileMeta(ctx, fileId) {
+  const file = await ctx.telegram.getFile(fileId);
+  return {
+    filePath: file.file_path || "",
+    fileSize: file.file_size || 0
+  };
 }
 
 function getLargestPhoto(photos = []) {
@@ -134,18 +137,27 @@ bot.on("photo", async (ctx) => {
   }
 
   const userId = getUserKey(ctx);
-  let photoUrl = "";
+  let uploadedPhotoUrl = "";
   try {
-    photoUrl = await getTelegramFileUrl(ctx, largest.file_id);
+    const [photoBuffer, photoMeta] = await Promise.all([
+      downloadTelegramFileBuffer(ctx, largest.file_id),
+      getTelegramFileMeta(ctx, largest.file_id)
+    ]);
+    uploadedPhotoUrl = await uploadRecipeImage({
+      userId,
+      fileId: largest.file_id,
+      filePath: photoMeta.filePath,
+      buffer: photoBuffer
+    });
   } catch (error) {
-    console.warn("Could not resolve Telegram photo URL:", error);
+    console.warn("Could not upload photo to Supabase storage:", error);
   }
 
   pendingByUser.set(userId, {
     userId,
     stage: "awaiting_recipe_input",
     photoFileId: largest.file_id,
-    photoUrl,
+    photoUrl: uploadedPhotoUrl,
     formattedRecipe: null,
     rawInput: ""
   });
@@ -272,22 +284,13 @@ bot.action("recipe_yes", async (ctx) => {
   await ctx.answerCbQuery("Saving...");
 
   try {
-    let resolvedPhotoUrl = userState.photoUrl || "";
-    if (!resolvedPhotoUrl && userState.photoFileId) {
-      try {
-        resolvedPhotoUrl = await getTelegramFileUrl(ctx, userState.photoFileId);
-      } catch (error) {
-        console.warn("Could not resolve Telegram photo URL at save time:", error);
-      }
-    }
-
     const r = userState.formattedRecipe;
-    await saveRecipeToGoogleSheet({
+    await saveRecipeToSupabase({
       submittedBy: getDisplayName(ctx),
       telegramUserId: String(ctx.from?.id || ""),
       telegramUsername: ctx.from?.username || "",
       photoFileId: userState.photoFileId || "",
-      photoUrl: resolvedPhotoUrl,
+      photoUrl: userState.photoUrl || "",
       title: r.title || "",
       story: r.story || "",
       ingredients: r.ingredients || [],
@@ -303,9 +306,7 @@ bot.action("recipe_yes", async (ctx) => {
     await ctx.reply("Saved successfully. Send another dish photo anytime.");
   } catch (error) {
     console.error(error);
-    await ctx.reply(
-      "I could not save to Google Sheets. Check credentials/permissions and ensure Apps Script webhook URL is a deployed /exec endpoint."
-    );
+    await ctx.reply("I could not save to Supabase. Check your storage bucket/table permissions and env keys.");
   }
 });
 
@@ -313,9 +314,15 @@ bot.catch((error) => {
   console.error("Bot error:", error);
 });
 
-bot.launch().then(() => {
-  console.log("Family cookbook bot is running.");
-});
+bot
+  .launch()
+  .then(() => {
+    console.log("Family cookbook bot is running in long polling mode.");
+  })
+  .catch((error) => {
+    console.error("Failed to launch bot:", error);
+    process.exit(1);
+  });
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
