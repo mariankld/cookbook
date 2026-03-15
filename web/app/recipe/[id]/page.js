@@ -7,18 +7,12 @@ import { fetchRecipeById } from "../../../lib/recipes";
 export const dynamic = "force-dynamic";
 
 function buildRecipeDetailData(recipe) {
-  const story = recipe.story || "";
-  const portionMatch = story.match(/Makes?\s+([^().]+?)(?:\s*\(about\s*(\d+)\s*servings?\))?[.]/i);
-  const portions = portionMatch?.[1]?.trim() || "n/a";
-  const servingsFromPortion = portionMatch?.[2]?.trim() || "n/a";
-  const servings = recipe.title === "Egg Omelet with Tortilla" ? "2" : servingsFromPortion;
-  const notesMatch = story.match(/Can be made vegan[^.]*[.]/i);
-  const notesBase = notesMatch ? notesMatch[0].replace(/[.]$/, "") : story.trim() || "n/a";
-  const notes = notesBase.replace(/yogurt/gi, "yoghurt");
+  const story = recipe.story?.trim() || "";
+  const servings = recipe.servings?.trim() || "n/a";
+  const notes = story || "n/a";
 
   return {
     time: recipe.cookingTime ? `${recipe.cookingTime} min` : "n/a",
-    portions,
     servings,
     estimatedCalories: "250 kcal",
     caloriesConfidence: "medium",
@@ -89,7 +83,6 @@ export default async function RecipePage({ params }) {
         <section className="recipe-extra">
           <h2>Details</h2>
           <p>Time: {detailData.time}</p>
-          <p>Portions: {detailData.portions}</p>
           <p>Servings: {detailData.servings}</p>
           <p>Estimated calories (per serving): {detailData.estimatedCalories}</p>
           <p>Calories confidence: {detailData.caloriesConfidence}</p>

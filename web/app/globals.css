@@ -252,14 +252,27 @@ a {
 
 .comments-section {
   margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.comments-section h2 {
+  margin: 0;
+}
+
+.comments-frame {
   border: 1px solid var(--border);
   background: var(--card);
   border-radius: 18px;
   padding: 20px;
 }
 
-.comments-section h2 {
+.comments-frame h3 {
   margin: 0;
+}
+
+.comment-compose {
+  margin-top: 4px;
 }
 
 .comments-note {

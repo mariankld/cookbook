@@ -48,6 +48,7 @@ export function mapRecipe(row) {
     image: row.photo_url || "",
     author: row.submitted_by || "Unknown",
     cookingTime: Number(row.time_minutes) || 0,
+    servings: row.servings ? String(row.servings) : "",
     tags,
     tagGroups,
     flatTags: flattenTags(tags),
@@ -62,7 +63,9 @@ export async function fetchRecipes() {
 
   const { data, error } = await supabase
     .from(table)
-    .select("id, title, story, photo_url, submitted_by, time_minutes, tags, ingredients, instructions")
+    .select(
+      "id, title, story, photo_url, submitted_by, time_minutes, servings, tags, ingredients, instructions"
+    )
     .order("id", { ascending: false });
 
   if (error) {
@@ -78,7 +81,9 @@ export async function fetchRecipeById(id) {
 
   const { data, error } = await supabase
     .from(table)
-    .select("id, title, story, photo_url, submitted_by, time_minutes, tags, ingredients, instructions")
+    .select(
+      "id, title, story, photo_url, submitted_by, time_minutes, servings, tags, ingredients, instructions"
+    )
     .eq("id", id)
     .maybeSingle();
 

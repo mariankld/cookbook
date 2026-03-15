@@ -57,53 +57,59 @@ export default function CommentsSection({ recipeId, initialComments, initialErro
   return (
     <section className="comments-section">
       <h2>Comments</h2>
-      <p className="comments-note">No account needed. Share your thoughts, tweaks, or serving tips.</p>
+      <div className="comments-frame published-comments">
+        <h3>Published comments</h3>
+        <div className="comments-list">
+          {comments.length ? (
+            comments.map((comment) => (
+              <article key={comment.id} className="comment-item">
+                <div className="comment-head">
+                  <strong>{comment.authorName || "Anonymous"}</strong>
+                  <span>{formatDate(comment.createdAt)}</span>
+                </div>
+                <p>{comment.body}</p>
+              </article>
+            ))
+          ) : (
+            <p className="empty">No comments yet. Be the first to share feedback.</p>
+          )}
+        </div>
+      </div>
 
-      <form className="comment-form" onSubmit={handleSubmit}>
-        <label>
-          Name (optional)
-          <input
-            type="text"
-            value={authorName}
-            onChange={(event) => setAuthorName(event.target.value)}
-            placeholder="Anonymous"
-            maxLength={80}
-          />
-        </label>
+      <div className="comments-frame comment-compose">
+        <h3>Add a comment</h3>
+        <p className="comments-note">No account needed. Share your thoughts, tweaks, or serving tips.</p>
 
-        <label>
-          Comment
-          <textarea
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder="What did you think of this recipe?"
-            rows={4}
-            maxLength={1000}
-            required
-          />
-        </label>
+        <form className="comment-form" onSubmit={handleSubmit}>
+          <label>
+            Name (optional)
+            <input
+              type="text"
+              value={authorName}
+              onChange={(event) => setAuthorName(event.target.value)}
+              placeholder="Anonymous"
+              maxLength={80}
+            />
+          </label>
 
-        <button type="submit" disabled={!canSubmit}>
-          {isSubmitting ? "Posting..." : "Post comment"}
-        </button>
-      </form>
+          <label>
+            Comment
+            <textarea
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="What did you think of this recipe?"
+              rows={4}
+              maxLength={1000}
+              required
+            />
+          </label>
 
-      {error ? <p className="comment-error">{error}</p> : null}
+          <button type="submit" disabled={!canSubmit}>
+            {isSubmitting ? "Posting..." : "Post comment"}
+          </button>
+        </form>
 
-      <div className="comments-list">
-        {comments.length ? (
-          comments.map((comment) => (
-            <article key={comment.id} className="comment-item">
-              <div className="comment-head">
-                <strong>{comment.authorName || "Anonymous"}</strong>
-                <span>{formatDate(comment.createdAt)}</span>
-              </div>
-              <p>{comment.body}</p>
-            </article>
-          ))
-        ) : (
-          <p className="empty">No comments yet. Be the first to share feedback.</p>
-        )}
+        {error ? <p className="comment-error">{error}</p> : null}
       </div>
     </section>
   );
