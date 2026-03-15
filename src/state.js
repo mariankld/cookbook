@@ -1,1 +1,1 @@
-export const pendingByUser = new Map();
+export const pendingByChat = new Map();

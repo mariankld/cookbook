@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Telegraf, Markup } from "telegraf";
-import { pendingByUser } from "./state.js";
+import { pendingByChat } from "./state.js";
 import {
   formatRecipeWithTags,
   renderRecipeForTelegram,
@@ -17,8 +17,8 @@ for (const key of requiredEnv) {
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-function getUserKey(ctx) {
-  return String(ctx.from?.id || "unknown");
+function getChatKey(ctx) {
+  return String(ctx.chat?.id || ctx.from?.id || "unknown");
 }
 
 function getDisplayName(ctx) {
@@ -127,7 +127,7 @@ async function generateAndPreviewRecipe(ctx, userState, userText) {
   userState.rawInput = userText;
   userState.pendingRecipeInput = "";
   userState.stage = "awaiting_approval";
-  pendingByUser.set(userState.userId, userState);
+  pendingByChat.set(userState.chatId, userState);
 
   await ctx.replyWithMarkdown(
     `${renderRecipeForTelegram(recipe)}\n\nIs everything correct?`,
@@ -153,7 +153,8 @@ bot.on("photo", async (ctx) => {
     return;
   }
 
-  const userId = getUserKey(ctx);
+  const chatId = getChatKey(ctx);
+  const senderId = String(ctx.from?.id || "");
   let uploadedPhotoUrl = "";
   try {
     const [photoBuffer, photoMeta] = await Promise.all([
@@ -161,7 +162,7 @@ bot.on("photo", async (ctx) => {
       getTelegramFileMeta(ctx, largest.file_id)
     ]);
     uploadedPhotoUrl = await uploadRecipeImage({
-      userId,
+      userId: senderId || chatId,
       fileId: largest.file_id,
       filePath: photoMeta.filePath,
       buffer: photoBuffer
@@ -170,8 +171,8 @@ bot.on("photo", async (ctx) => {
     console.warn("Could not upload photo to Supabase storage:", error);
   }
 
-  pendingByUser.set(userId, {
-    userId,
+  pendingByChat.set(chatId, {
+    chatId,
     stage: "awaiting_recipe_input",
     photoFileId: largest.file_id,
     photoUrl: uploadedPhotoUrl,
@@ -186,8 +187,8 @@ bot.on("photo", async (ctx) => {
 });
 
 bot.on("voice", async (ctx) => {
-  const userId = getUserKey(ctx);
-  const userState = pendingByUser.get(userId);
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
 
   if (
     !userState ||
@@ -216,7 +217,7 @@ bot.on("voice", async (ctx) => {
     if (userState.stage === "awaiting_recipe_input") {
       userState.pendingRecipeInput = transcript;
       userState.stage = "awaiting_servings";
-      pendingByUser.set(userId, userState);
+      pendingByChat.set(chatId, userState);
       await ctx.reply('How many servings did this recipe produce? Please respond with a number ex "2"');
       return;
     }
@@ -255,8 +256,8 @@ bot.on("voice", async (ctx) => {
 });
 
 bot.on("text", async (ctx) => {
-  const userId = getUserKey(ctx);
-  const userState = pendingByUser.get(userId);
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
 
   if (shouldSendGreetingIntro(ctx)) {
     await ctx.reply(
@@ -287,7 +288,7 @@ bot.on("text", async (ctx) => {
     if (userState.stage === "awaiting_recipe_input") {
       userState.pendingRecipeInput = text;
       userState.stage = "awaiting_servings";
-      pendingByUser.set(userId, userState);
+      pendingByChat.set(chatId, userState);
       await ctx.reply('How many servings did this recipe produce? Please respond with a number ex "2"');
       return;
     }
@@ -330,23 +331,23 @@ bot.on("text", async (ctx) => {
 });
 
 bot.action("recipe_no", async (ctx) => {
-  const userId = getUserKey(ctx);
-  const userState = pendingByUser.get(userId);
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
   if (!userState || userState.stage !== "awaiting_approval") {
     await ctx.answerCbQuery("Nothing pending.");
     return;
   }
 
   userState.stage = "awaiting_corrections";
-  pendingByUser.set(userId, userState);
+  pendingByChat.set(chatId, userState);
 
   await ctx.answerCbQuery();
   await ctx.reply("Please send what should change (text or voice).");
 });
 
 bot.action("recipe_yes", async (ctx) => {
-  const userId = getUserKey(ctx);
-  const userState = pendingByUser.get(userId);
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
   if (!userState || userState.stage !== "awaiting_approval" || !userState.formattedRecipe) {
     await ctx.answerCbQuery("Nothing to save.");
     return;
@@ -373,7 +374,7 @@ bot.action("recipe_yes", async (ctx) => {
       rawInput: userState.rawInput || ""
     });
 
-    pendingByUser.delete(userId);
+    pendingByChat.delete(chatId);
     await ctx.reply("Saved successfully. Send another dish photo anytime.");
   } catch (error) {
     console.error(error);
