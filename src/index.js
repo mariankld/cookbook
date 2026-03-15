@@ -21,6 +21,11 @@ function getChatKey(ctx) {
   return String(ctx.chat?.id || ctx.from?.id || "unknown");
 }
 
+function isGroupChat(ctx) {
+  const chatType = ctx.chat?.type || "";
+  return chatType === "group" || chatType === "supergroup";
+}
+
 function getDisplayName(ctx) {
   return (
     ctx.from?.first_name ||
@@ -140,6 +145,62 @@ async function generateAndPreviewRecipe(ctx, userState, userText) {
   );
 }
 
+async function handleRecipeTextInput(ctx, text) {
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
+  if (!userState) {
+    return false;
+  }
+
+  if (userState.stage === "awaiting_recipe_input") {
+    userState.pendingRecipeInput = text;
+    userState.stage = "awaiting_servings";
+    pendingByChat.set(chatId, userState);
+    await ctx.reply('How many servings did this recipe produce? Please respond with a number ex "2"');
+    return true;
+  }
+
+  if (userState.stage === "awaiting_corrections") {
+    await ctx.reply("Formatting and tagging your recipe...");
+    let textForModel = text;
+    if (userState.formattedRecipe) {
+      textForModel = [
+        "Current recipe JSON draft:",
+        JSON.stringify(userState.formattedRecipe),
+        "",
+        "User correction instructions:",
+        text
+      ].join("\n");
+    }
+    await generateAndPreviewRecipe(ctx, userState, textForModel);
+    return true;
+  }
+
+  return false;
+}
+
+async function handleServingsInput(ctx, text) {
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
+  if (!userState || userState.stage !== "awaiting_servings") {
+    return false;
+  }
+
+  const servingsCount = extractServingsCount(text);
+  if (!servingsCount) {
+    await ctx.reply('I could not find a servings number. Please respond with a number ex "2".');
+    return true;
+  }
+
+  await ctx.reply("Formatting and tagging your recipe...");
+  const textForModel = buildRecipeInputWithServings(
+    userState.pendingRecipeInput || "",
+    servingsCount
+  );
+  await generateAndPreviewRecipe(ctx, userState, textForModel);
+  return true;
+}
+
 bot.start(async (ctx) => {
   await ctx.reply(
     "Send a dish photo to start. I will collect recipe text or voice in RU/EN, normalize it, tag it, and ask for confirmation before saving."
@@ -182,8 +243,45 @@ bot.on("photo", async (ctx) => {
   });
 
   await ctx.reply(
-    "Great photo. Now send ingredients and instructions in one message.\n\nYou can send text or voice memo in Russian or English."
+    isGroupChat(ctx)
+      ? [
+          "Great photo. Now send ingredients and instructions in one message.",
+          "",
+          "In group chats, Telegram may hide regular messages from bots.",
+          "Safest options:",
+          "- reply directly to this bot message, or",
+          "- use /recipe followed by your ingredients + instructions.",
+          "",
+          "You can send text or voice memo in Russian or English."
+        ].join("\n")
+      : "Great photo. Now send ingredients and instructions in one message.\n\nYou can send text or voice memo in Russian or English."
   );
+});
+
+bot.command("recipe", async (ctx) => {
+  const text = (ctx.message?.text || "").replace(/^\/recipe(?:@\w+)?\s*/i, "").trim();
+  if (!text) {
+    await ctx.reply("Please include ingredients and instructions after /recipe.");
+    return;
+  }
+
+  const handled = await handleRecipeTextInput(ctx, text);
+  if (!handled) {
+    await ctx.reply("Please send a dish photo first.");
+  }
+});
+
+bot.command("servings", async (ctx) => {
+  const text = (ctx.message?.text || "").replace(/^\/servings(?:@\w+)?\s*/i, "").trim();
+  if (!text) {
+    await ctx.reply('Please send a number after /servings, for example: /servings 2');
+    return;
+  }
+
+  const handled = await handleServingsInput(ctx, text);
+  if (!handled) {
+    await ctx.reply("Please send a dish photo and recipe text first.");
+  }
 });
 
 bot.on("voice", async (ctx) => {
@@ -285,45 +383,15 @@ bot.on("text", async (ctx) => {
   try {
     const text = ctx.message.text || "";
 
-    if (userState.stage === "awaiting_recipe_input") {
-      userState.pendingRecipeInput = text;
-      userState.stage = "awaiting_servings";
-      pendingByChat.set(chatId, userState);
-      await ctx.reply('How many servings did this recipe produce? Please respond with a number ex "2"');
+    if (await handleRecipeTextInput(ctx, text)) {
       return;
     }
 
-    if (userState.stage === "awaiting_servings") {
-      const servingsCount = extractServingsCount(text);
-      if (!servingsCount) {
-        await ctx.reply('I could not find a servings number. Please respond with a number ex "2".');
-        return;
-      }
-      await ctx.reply("Formatting and tagging your recipe...");
-      const textForModel = buildRecipeInputWithServings(
-        userState.pendingRecipeInput || "",
-        servingsCount
-      );
-      await generateAndPreviewRecipe(ctx, userState, textForModel);
+    if (await handleServingsInput(ctx, text)) {
       return;
     }
 
-    if (userState.stage !== "awaiting_corrections") {
-      return;
-    }
-
-    await ctx.reply("Formatting and tagging your recipe...");
-    let textForModel = text;
-    if (userState.formattedRecipe) {
-      textForModel = [
-        "Current recipe JSON draft:",
-        JSON.stringify(userState.formattedRecipe),
-        "",
-        "User correction instructions:",
-        text
-      ].join("\n");
-    }
-    await generateAndPreviewRecipe(ctx, userState, textForModel);
+    return;
   } catch (error) {
     console.error(error);
     await ctx.reply("I hit an error while formatting. Please try again.");
