@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { buildFilterOptions, fetchRecipes, filterRecipes } from "../lib/recipes";
+import RecipeCard from "./RecipeCard";
 
 export const dynamic = "force-dynamic";
 
@@ -69,24 +70,7 @@ export default async function HomePage({ searchParams }) {
 
       <section className="recipe-grid">
         {visibleRecipes.map((recipe) => (
-          <article key={recipe.id} className="card">
-            <Link href={`/recipe/${recipe.id}`} className="card-link">
-              <div className="image-wrap">
-                {recipe.image ? (
-                  <img src={recipe.image} alt={recipe.title} loading="lazy" />
-                ) : (
-                  <div className="image-fallback">No image</div>
-                )}
-              </div>
-              <div className="card-content">
-                <h2>{recipe.title}</h2>
-                <div className="meta">
-                  <span>{recipe.author}</span>
-                  <span>{recipe.cookingTime ? `${recipe.cookingTime} min` : "Time n/a"}</span>
-                </div>
-              </div>
-            </Link>
-          </article>
+          <RecipeCard key={recipe.id} recipe={recipe} />
         ))}
       </section>
 

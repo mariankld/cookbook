@@ -1,4 +1,9 @@
-import { getRecipesTableName, getSupabaseServerClient } from "./supabaseServer";
+import {
+  getAdditionalPhotosPrefix,
+  getRecipesTableName,
+  getStorageBucketName,
+  getSupabaseServerClient
+} from "./supabaseServer";
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
@@ -25,7 +30,39 @@ function flattenTags(tags) {
     .map((tag) => String(tag).toLowerCase());
 }
 
-export function mapRecipe(row) {
+function mergeRecipeImages(coverImage, additionalImages) {
+  const merged = [coverImage, ...safeArray(additionalImages)].filter(Boolean);
+  return Array.from(new Set(merged));
+}
+
+async function fetchAdditionalPhotosByRecipeIdMap(supabase, recipeIds) {
+  const bucket = getStorageBucketName();
+  const prefix = getAdditionalPhotosPrefix();
+  const entries = await Promise.all(
+    recipeIds.map(async (recipeId) => {
+      const folder = `${prefix}/${recipeId}/additional`;
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .list(folder, { limit: 100, sortBy: { column: "name", order: "asc" } });
+
+      if (error) {
+        return [recipeId, []];
+      }
+
+      const urls = safeArray(data)
+        .filter((item) => item?.name && !item.name.endsWith("/"))
+        .map((item) => supabase.storage.from(bucket).getPublicUrl(`${folder}/${item.name}`))
+        .map((publicUrlResult) => publicUrlResult?.data?.publicUrl || "")
+        .filter(Boolean);
+
+      return [recipeId, urls];
+    })
+  );
+
+  return new Map(entries);
+}
+
+export function mapRecipe(row, additionalImages = []) {
   const tags = row.tags || {};
   const cuisineTags = normalizeTagList(tags.cuisine);
   const mealTypeTags = normalizeTagList(tags.meal_type);
@@ -46,6 +83,7 @@ export function mapRecipe(row) {
     title: row.title || "Untitled recipe",
     story: row.story || "",
     image: row.photo_url || "",
+    images: mergeRecipeImages(row.photo_url || "", additionalImages),
     author: row.submitted_by || "Unknown",
     cookingTime: Number(row.time_minutes) || 0,
     servings: row.servings ? String(row.servings) : "",
@@ -72,7 +110,11 @@ export async function fetchRecipes() {
     throw new Error(`Failed loading recipes: ${error.message}`);
   }
 
-  return (data || []).map(mapRecipe);
+  const rows = data || [];
+  const recipeIds = rows.map((row) => String(row.id));
+  const additionalPhotosMap = await fetchAdditionalPhotosByRecipeIdMap(supabase, recipeIds);
+
+  return rows.map((row) => mapRecipe(row, additionalPhotosMap.get(String(row.id)) || []));
 }
 
 export async function fetchRecipeById(id) {
@@ -91,7 +133,12 @@ export async function fetchRecipeById(id) {
     throw new Error(`Failed loading recipe: ${error.message}`);
   }
 
-  return data ? mapRecipe(data) : null;
+  if (!data) {
+    return null;
+  }
+
+  const additionalPhotosMap = await fetchAdditionalPhotosByRecipeIdMap(supabase, [String(data.id)]);
+  return mapRecipe(data, additionalPhotosMap.get(String(data.id)) || []);
 }
 
 export function filterRecipes(recipes, filters) {

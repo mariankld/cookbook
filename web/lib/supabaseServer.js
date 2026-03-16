@@ -20,3 +20,11 @@ export function getSupabaseServerClient() {
 export function getRecipesTableName() {
   return process.env.SUPABASE_RECIPES_TABLE || "recipes";
 }
+
+export function getStorageBucketName() {
+  return process.env.SUPABASE_STORAGE_BUCKET || "recipe-images";
+}
+
+export function getAdditionalPhotosPrefix() {
+  return (process.env.SUPABASE_ADDITIONAL_PHOTOS_PREFIX || "recipes").replace(/\/+$/, "");
+}
