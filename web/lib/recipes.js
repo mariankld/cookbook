@@ -110,11 +110,7 @@ export async function fetchRecipes() {
     throw new Error(`Failed loading recipes: ${error.message}`);
   }
 
-  const rows = data || [];
-  const recipeIds = rows.map((row) => String(row.id));
-  const additionalPhotosMap = await fetchAdditionalPhotosByRecipeIdMap(supabase, recipeIds);
-
-  return rows.map((row) => mapRecipe(row, additionalPhotosMap.get(String(row.id)) || []));
+  return (data || []).map((row) => mapRecipe(row));
 }
 
 export async function fetchRecipeById(id) {

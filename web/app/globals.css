@@ -250,10 +250,60 @@ a {
 
 .detail-image {
   width: 100%;
-  margin-top: 16px;
   border-radius: 12px;
   max-height: 460px;
   object-fit: cover;
+}
+
+.detail-image-wrap {
+  position: relative;
+  margin-top: 16px;
+}
+
+.detail-image-carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  width: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-x;
+}
+
+.detail-image-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.detail-image-carousel .detail-image {
+  scroll-snap-align: start;
+}
+
+.detail-image-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.detail-image-dot {
+  width: 7px;
+  height: 7px;
+  border: none;
+  border-radius: 999px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.detail-image-dot.active {
+  background: rgba(255, 255, 255, 1);
 }
 
 .detail-grid {

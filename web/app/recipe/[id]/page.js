@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CommentsSection from "./CommentsSection";
+import RecipeImageCarousel from "./RecipeImageCarousel";
 import { fetchCommentsByRecipeId } from "../../../lib/comments";
 import { fetchRecipeById } from "../../../lib/recipes";
 
@@ -54,7 +55,7 @@ export default async function RecipePage({ params }) {
           </div>
         </header>
 
-        {recipe.image ? <img src={recipe.image} alt={recipe.title} className="detail-image" /> : null}
+        <RecipeImageCarousel title={recipe.title} images={recipe.images} />
 
         <section className="detail-grid">
           <div>
