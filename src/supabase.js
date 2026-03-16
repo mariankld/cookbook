@@ -19,6 +19,10 @@ function getRecipesTable() {
   return process.env.SUPABASE_RECIPES_TABLE || "recipes";
 }
 
+function getAdditionalPhotosPrefix() {
+  return process.env.SUPABASE_ADDITIONAL_PHOTOS_PREFIX || "recipes";
+}
+
 function inferFileExtension(filePath = "") {
   const clean = filePath.split("?")[0];
   const ext = clean.includes(".") ? clean.slice(clean.lastIndexOf(".") + 1).toLowerCase() : "";
@@ -50,6 +54,25 @@ export async function uploadRecipeImage({ userId, fileId, filePath, buffer }) {
   return data?.publicUrl || "";
 }
 
+export async function uploadRecipeAdditionalImage({ recipeId, fileId, filePath, buffer }) {
+  const extension = inferFileExtension(filePath);
+  const contentType = inferContentType(extension);
+  const prefix = getAdditionalPhotosPrefix().replace(/\/+$/, "");
+  const objectPath = `${prefix}/${recipeId}/additional/${Date.now()}-${fileId}.${extension}`;
+  const bucket = getStorageBucket();
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(objectPath, buffer, { contentType, upsert: false });
+
+  if (uploadError) {
+    throw new Error(`Supabase additional image upload failed: ${uploadError.message}`);
+  }
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+  return data?.publicUrl || "";
+}
+
 export async function saveRecipeToSupabase(payload) {
   const row = {
     submitted_by: payload.submittedBy || "",
@@ -67,8 +90,10 @@ export async function saveRecipeToSupabase(payload) {
     raw_input: payload.rawInput || ""
   };
 
-  const { error } = await supabase.from(getRecipesTable()).insert(row);
+  const { data, error } = await supabase.from(getRecipesTable()).insert(row).select("id").single();
   if (error) {
     throw new Error(`Supabase insert failed: ${error.message}`);
   }
+
+  return data?.id ?? null;
 }

@@ -6,7 +6,7 @@ import {
   renderRecipeForTelegram,
   transcribeAudio
 } from "./recipeFormatter.js";
-import { saveRecipeToSupabase, uploadRecipeImage } from "./supabase.js";
+import { saveRecipeToSupabase, uploadRecipeAdditionalImage, uploadRecipeImage } from "./supabase.js";
 
 const requiredEnv = ["TELEGRAM_BOT_TOKEN", "OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
 for (const key of requiredEnv) {
@@ -16,6 +16,7 @@ for (const key of requiredEnv) {
 }
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const additionalPhotoSaveTimers = new Map();
 
 function getChatKey(ctx) {
   return String(ctx.chat?.id || ctx.from?.id || "unknown");
@@ -126,6 +127,49 @@ function buildRecipeInputWithServings(recipeInput, servingsCount) {
   ].join("\n");
 }
 
+function clearAdditionalPhotoSaveTimer(chatId) {
+  const timer = additionalPhotoSaveTimers.get(chatId);
+  if (timer) {
+    clearTimeout(timer);
+    additionalPhotoSaveTimers.delete(chatId);
+  }
+}
+
+async function persistConfirmedRecipe(ctx, userState) {
+  const r = userState.formattedRecipe;
+  return saveRecipeToSupabase({
+    submittedBy: getDisplayName(ctx),
+    telegramUserId: String(ctx.from?.id || ""),
+    telegramUsername: ctx.from?.username || "",
+    photoFileId: userState.photoFileId || "",
+    photoUrl: userState.photoUrl || "",
+    title: r.title || "",
+    story: r.story || "",
+    ingredients: r.ingredients || [],
+    instructions: r.instructions || [],
+    timeMinutes: r.time_minutes || 0,
+    servings: r.servings || "",
+    tags: r.tags || {},
+    sourceLanguage: r.source_language || "",
+    rawInput: userState.rawInput || ""
+  });
+}
+
+function scheduleAdditionalPhotoCompletion(ctx, chatId) {
+  clearAdditionalPhotoSaveTimer(chatId);
+  const timer = setTimeout(async () => {
+    const latestState = pendingByChat.get(chatId);
+    if (!latestState || latestState.stage !== "awaiting_additional_photos") {
+      return;
+    }
+    pendingByChat.delete(chatId);
+    await ctx.reply("Ok, waiting for your next recipe.");
+    clearAdditionalPhotoSaveTimer(chatId);
+  }, 1800);
+
+  additionalPhotoSaveTimers.set(chatId, timer);
+}
+
 async function generateAndPreviewRecipe(ctx, userState, userText) {
   const recipe = await formatRecipeWithTags(userText, "auto", userState.photoUrl || "");
   userState.formattedRecipe = recipe;
@@ -208,14 +252,42 @@ bot.start(async (ctx) => {
 });
 
 bot.on("photo", async (ctx) => {
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
+  const senderId = String(ctx.from?.id || "");
+
+  if (userState?.stage === "awaiting_additional_photos" && userState.recipeId) {
+    const largestAdditional = getLargestPhoto(ctx.message.photo || []);
+    if (!largestAdditional) {
+      await ctx.reply("I could not read that photo. Please try again.");
+      return;
+    }
+
+    try {
+      const [photoBuffer, photoMeta] = await Promise.all([
+        downloadTelegramFileBuffer(ctx, largestAdditional.file_id),
+        getTelegramFileMeta(ctx, largestAdditional.file_id)
+      ]);
+      await uploadRecipeAdditionalImage({
+        recipeId: userState.recipeId,
+        fileId: largestAdditional.file_id,
+        filePath: photoMeta.filePath,
+        buffer: photoBuffer
+      });
+    } catch (error) {
+      console.warn("Could not upload additional photo to Supabase storage:", error);
+    }
+
+    scheduleAdditionalPhotoCompletion(ctx, chatId);
+    return;
+  }
+
   const largest = getLargestPhoto(ctx.message.photo || []);
   if (!largest) {
     await ctx.reply("I could not read that photo. Please try again.");
     return;
   }
 
-  const chatId = getChatKey(ctx);
-  const senderId = String(ctx.from?.id || "");
   let uploadedPhotoUrl = "";
   try {
     const [photoBuffer, photoMeta] = await Promise.all([
@@ -287,6 +359,11 @@ bot.command("servings", async (ctx) => {
 bot.on("voice", async (ctx) => {
   const chatId = getChatKey(ctx);
   const userState = pendingByChat.get(chatId);
+
+  if (userState?.stage === "awaiting_additional_photos") {
+    await ctx.reply("Please send only photos now. Send them all together in the next message.");
+    return;
+  }
 
   if (
     !userState ||
@@ -380,6 +457,11 @@ bot.on("text", async (ctx) => {
     return;
   }
 
+  if (userState.stage === "awaiting_additional_photos") {
+    await ctx.reply("Send them all together in the next message.");
+    return;
+  }
+
   try {
     const text = ctx.message.text || "";
 
@@ -421,29 +503,61 @@ bot.action("recipe_yes", async (ctx) => {
     return;
   }
 
+  await ctx.answerCbQuery();
+
+  userState.stage = "awaiting_more_photos_choice";
+  pendingByChat.set(chatId, userState);
+
+  await ctx.reply(
+    "Do you want to add more photos?",
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback("Yes", "more_photos_yes"),
+        Markup.button.callback("No", "more_photos_no")
+      ]
+    ])
+  );
+});
+
+bot.action("more_photos_yes", async (ctx) => {
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
+  if (!userState || userState.stage !== "awaiting_more_photos_choice" || !userState.formattedRecipe) {
+    await ctx.answerCbQuery("Nothing pending.");
+    return;
+  }
+
   await ctx.answerCbQuery("Saving...");
 
   try {
-    const r = userState.formattedRecipe;
-    await saveRecipeToSupabase({
-      submittedBy: getDisplayName(ctx),
-      telegramUserId: String(ctx.from?.id || ""),
-      telegramUsername: ctx.from?.username || "",
-      photoFileId: userState.photoFileId || "",
-      photoUrl: userState.photoUrl || "",
-      title: r.title || "",
-      story: r.story || "",
-      ingredients: r.ingredients || [],
-      instructions: r.instructions || [],
-      timeMinutes: r.time_minutes || 0,
-      servings: r.servings || "",
-      tags: r.tags || {},
-      sourceLanguage: r.source_language || "",
-      rawInput: userState.rawInput || ""
-    });
+    const recipeId = await persistConfirmedRecipe(ctx, userState);
+    if (!recipeId) {
+      throw new Error("Recipe ID missing after save.");
+    }
+    userState.stage = "awaiting_additional_photos";
+    userState.recipeId = recipeId;
+    pendingByChat.set(chatId, userState);
+    await ctx.reply("Send them all together in the next message.");
+  } catch (error) {
+    console.error(error);
+    await ctx.reply("I could not save to Supabase. Check your storage bucket/table permissions and env keys.");
+  }
+});
 
+bot.action("more_photos_no", async (ctx) => {
+  const chatId = getChatKey(ctx);
+  const userState = pendingByChat.get(chatId);
+  if (!userState || userState.stage !== "awaiting_more_photos_choice" || !userState.formattedRecipe) {
+    await ctx.answerCbQuery("Nothing to save.");
+    return;
+  }
+
+  await ctx.answerCbQuery("Saving...");
+
+  try {
+    await persistConfirmedRecipe(ctx, userState);
     pendingByChat.delete(chatId);
-    await ctx.reply("Saved successfully. Send another dish photo anytime.");
+    await ctx.reply("Ok, waiting for your next recipe.");
   } catch (error) {
     console.error(error);
     await ctx.reply("I could not save to Supabase. Check your storage bucket/table permissions and env keys.");

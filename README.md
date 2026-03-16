@@ -24,6 +24,9 @@ This project now follows this flow:
   - `SUPABASE_SERVICE_ROLE_KEY`
 - Create a storage bucket (default: `recipe-images`).
 - Create a table (default: `recipes`) with columns matching payload fields in `src/supabase.js`.
+- Additional photos are stored only in Supabase Storage under:
+  - `recipes/<recipe_id>/additional/...`
+  - no `additional_photo_urls` table column is required.
 
 ## Environment variables
 
@@ -42,6 +45,7 @@ Required:
 Optional:
 - `SUPABASE_STORAGE_BUCKET` (default `recipe-images`)
 - `SUPABASE_RECIPES_TABLE` (default `recipes`)
+- `SUPABASE_ADDITIONAL_PHOTOS_PREFIX` (default `recipes`)
 - `OPENAI_TEXT_MODEL`
 - `OPENAI_TRANSCRIBE_MODEL`
 
